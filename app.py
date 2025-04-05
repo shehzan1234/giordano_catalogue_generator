@@ -17,7 +17,7 @@ for d in [UPLOAD_DIR, OUTPUT_DIR, CARD_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 st.set_page_config(page_title="Giordano Catalogue Generator", layout="wide")
-st.title("🛍️ Giordano WhatsApp-Style Catalogue Generator")
+st.title("🍭 Giordano WhatsApp-Style Catalogue Generator")
 
 # Upload logo
 logo_file = st.file_uploader("Upload Brand Logo", type=["png", "jpg"])
@@ -41,8 +41,15 @@ if st.button("Generate Catalogue") and excel_file and images_zip:
         if excel_file.name.endswith(".csv"):
             df = pd.read_csv(excel_file)
         else:
-            df = pd.read_excel(excel_file, header=None, skiprows=6)
-            df.columns = ["S.No", "Model", "EAN", "MRP", "Gender", "Discount", "CSP", "Inventory", "Remarks"]
+            df = pd.read_excel(excel_file, header=None)
+            first_row = df.iloc[0].tolist()
+            if "Model" in first_row:
+                df.columns = first_row
+                df = df[1:]
+            else:
+                df.columns = ["S.No", "Model", "EAN", "MRP", "Gender", "Discount", "CSP", "Inventory", "Remarks"]
+
+        st.write("Preview of product data:", df.head())
 
         # Load logo
         logo = Image.open(logo_file).convert("RGBA") if logo_file else None
@@ -56,9 +63,16 @@ if st.button("Generate Catalogue") and excel_file and images_zip:
             font = ImageFont.load_default()
 
         for idx, row in df.iterrows():
-            model = str(row["Model"]).strip()
-            image_path = UPLOAD_DIR / "images" / f"{model}.jpg"
+            model = str(row.get("Model", "")).strip()
+            if not model:
+                continue
+
+            image_path_jpg = UPLOAD_DIR / "images" / f"{model}.jpg"
+            image_path_png = UPLOAD_DIR / "images" / f"{model}.png"
+            image_path = image_path_jpg if image_path_jpg.exists() else image_path_png
+
             if not image_path.exists():
+                st.warning(f"Image not found for model: {model}")
                 continue
 
             # Open product image
@@ -68,7 +82,7 @@ if st.button("Generate Catalogue") and excel_file and images_zip:
             draw = ImageDraw.Draw(base)
             draw.rectangle([(0, 420), (500, 500)], fill="white")
             draw.text((10, 430), f"Model: {model}", fill="black", font=font)
-            draw.text((10, 455), f"MRP: ₹{int(row['MRP'])}  Offer: ₹{int(row['CSP'])}", fill="black", font=font)
+            draw.text((10, 455), f"MRP: ₹{int(float(row['MRP']))}  Offer: ₹{int(float(row['CSP']))}", fill="black", font=font)
             draw.text((10, 480), f"Stock: {row['Inventory']}  {row['Remarks']}", fill="black", font=font)
 
             out_path = CARD_DIR / f"{model}.jpg"
@@ -86,7 +100,7 @@ if st.button("Generate Catalogue") and excel_file and images_zip:
 
         for i in range(0, len(card_paths), cards_per_page):
             pdf.add_page()
-            # Add logo once on first page
+            # Add logo once at top center
             if i == 0 and logo:
                 pdf.image(str(logo_path), x=75, y=5, w=60)
 
